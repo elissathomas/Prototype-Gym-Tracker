@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>People Counter • VT Gym (Webcam)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root{
+    --maroon:#861F41; --orange:#E87722; --cream:#FAF6F2; --ink:#2b2b2b;
+    --card:#FFF7F2; --shadow:0 10px 30px rgba(0,0,0,.25); --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+    background:
+      radial-gradient(1200px 800px at 100% -10%, rgba(255,255,255,.06), transparent 60%),
+      radial-gradient(900px 600px at -20% 110%, rgba(255,255,255,.04), transparent 60%),
+      var(--maroon);
+    color:var(--cream); display:grid; place-items:center; padding:16px;
+  }
+
+  /* keep everything visible without scrolling on most laptops */
+  .app{width:min(1040px,96vw)}
+  header{display:flex;gap:12px;align-items:center;justify-content:center;margin:6px 0 8px}
+  .brand{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;
+    background:linear-gradient(145deg,#9b2a4f,#711831);box-shadow:inset 0 1px 1px rgba(255,255,255,.12),0 6px 18px rgba(0,0,0,.35)}
+  h1{margin:0;font-size:clamp(26px,3.8vw,40px);line-height:1.1;font-weight:800}
+  .sub{text-align:center;margin:2px 0 14px;opacity:.9}
+
+  .card{
+    background:linear-gradient(180deg,var(--card),#fff); color:var(--ink);
+    border-radius:var(--radius); box-shadow:var(--shadow); padding:16px;
+    display:grid; grid-template-columns: 1.05fr .95fr; gap:14px;
+    max-height: 78vh;  /* keep inside the screen */
+  }
+  @media (max-width: 900px){
+    .card{ grid-template-columns:1fr; max-height: none; }
+  }
+
+  /* LEFT = camera column */
+  .cam{
+    position:relative; background:#000; border-radius:14px; overflow:hidden;
+    /* size tuned to fit; adjust if you still see scrolling */
+    aspect-ratio: 16 / 9;
+    min-height: 360px;
+    border: 4px solid #f6efe9;
+    box-shadow: 0 0 0 6px #ecdcd2;
+  }
+  video#v{ width:100%; height:100%; object-fit:cover; transform: scaleX(-1); display:block; background:#000; }
+  .overlay{ position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; font-weight:900; color:#fff; text-shadow:0 10px 18px rgba(0,0,0,.35); }
+  .count{ font-size:clamp(48px,10vw,110px); background:rgba(0,0,0,.35); padding:6px 22px; border-radius:14px; border:1px solid rgba(255,255,255,.25); }
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+  .btn{ border:1px solid #e6d8d0; background:var(--orange); color:#fff; font-weight:700; padding:10px 14px;border-radius:12px;cursor:pointer; box-shadow:0 6px 16px rgba(232,119,34,.35); }
+  .btn:disabled{opacity:.55;cursor:not-allowed}
+  .pill{font-size:12px;padding:6px 10px;border-radius:999px;background:#fff3eb;color:#8a4a24;border:1px solid #ffd9bd}
+  .notice{color:#8a4a24;background:#fff4ec;border:1px solid #ffd9bd;padding:8px 10px;border-radius:10px;font-size:13px}
+  .hidden{display:none!important}
+  .meta{font-size:13px;color:#6e5f57}
+
+  /* RIGHT = guide image on top, results under it */
+  .right{ display:grid; grid-template-rows: auto 1fr; gap:10px; }
+  .guide{
+    margin:0; background:#fff; border:1px solid #ecdcd2; border-radius:14px; padding:10px;
+  }
+  .guide img{
+    width:100%; height:auto; max-height: 200px; object-fit:contain; display:block; border-radius:10px;
+  }
+  .guide figcaption{ font-size:13px; color:#6e5f57; text-align:center; margin-top:6px; }
+
+  .results{
+    background:#fff;border:1px solid #f0e4dc;border-radius:14px;padding:14px;
+    display:flex;flex-direction:column;gap:12px;justify-content:center; min-height: 220px;
+  }
+  .kpi{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  .num{font-size:clamp(36px,6vw,64px);font-weight:900;line-height:1;color:var(--maroon);text-shadow:0 10px 18px rgba(134,31,65,.15)}
+  .label{font-size:18px;color:#4d4340}
+
+  footer{margin-top:8px;text-align:center;opacity:.85;font-size:12px}
+</style>
+</head>
+<body>
+<main class="app" aria-live="polite">
+  <header>
+    <div class="brand" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#E87722" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="1" y="7" width="4" height="10" rx="1"></rect>
+        <rect x="19" y="7" width="4" height="10" rx="1"></rect>
+        <path d="M5 12h14"></path>
+      </svg>
+    </div>
+    <h1>People Counter</h1>
+  </header>
+  <p class="sub">Stand fully in frame, hit snapshot, and stay still for the 3-second countdown.</p>
+
+  <section class="card">
+    <!-- LEFT column: camera -->
+    <div>
+      <div id="notice" class="notice hidden"></div>
+
+      <div class="cam" id="cam">
+        <video id="v" playsinline autoplay muted></video>
+        <div class="overlay"><div id="countdown" class="count hidden">3</div></div>
+      </div>
+
+      <div class="controls">
+        <button id="start" class="btn">Start Camera</button>
+        <button id="snap" class="btn" disabled>Snapshot (3s)</button>
+        <span class="pill">Model: <span id="modelTag">—</span></span>
+      </div>
+
+      <div class="meta" id="status">Camera not started.</div>
+    </div>
+
+    <!-- RIGHT column: guide image on top, results below -->
+    <div class="right">
+      <figure class="guide">
+        <img src="./stand-fully-in-frame.png" alt="Example: stand fully in frame" />
+        <figcaption>Stand fully in frame • step back during the 3-sec countdown</figcaption>
+      </figure>
+
+      <div class="results">
+        <div class="kpi" aria-live="polite" aria-atomic="true">
+          <div class="num" id="count">–</div>
+          <div class="label" id="labelText">people detected</div>
+        </div>
+        <div class="meta" id="extra"></div>
+        <div class="meta">Tip: stand back during the countdown so everyone’s in frame.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>© 2025 • VT Gym Prototype</footer>
+</main>
+
+<script>
+  /* ========= CONFIG ========= */
+  const DATASET = "people-detection-o4rdr";
+  const VERSION = "7";
+  const API_KEY = "m3e5pNsgn3yF2Pqy5gvH"; // use a proxy in production
+  const USE_PROXY = false;
+  const PROXY_URL = "http://localhost:5050/infer";
+  const CONFIDENCE = 0.40;
+
+  const DIRECT_ENDPOINT = `https://detect.roboflow.com/${DATASET}/${VERSION}?api_key=${API_KEY}&format=json&confidence=${CONFIDENCE}`;
+  let ENDPOINT = USE_PROXY ? PROXY_URL : DIRECT_ENDPOINT;
+
+  /* ========= Elements ========= */
+  const startBtn = document.getElementById("start");
+  const snapBtn = document.getElementById("snap");
+  const video = document.getElementById("v");
+  const cd = document.getElementById("countdown");
+  const statusEl = document.getElementById("status");
+  const notice = document.getElementById("notice");
+  const countEl = document.getElementById("count");
+  const labelText = document.getElementById("labelText");
+  const extraEl = document.getElementById("extra");
+  const modelTag = document.getElementById("modelTag");
+  modelTag.textContent = `${DATASET}/${VERSION}`;
+
+  function showNotice(text, type=""){ 
+    notice.textContent = text; 
+    notice.className = `notice ${type}`; 
+    if(!text) notice.classList.add("hidden"); else notice.classList.remove("hidden");
+  }
+  function setStatus(t){ statusEl.innerHTML = t; }
+  function setCount(n){ countEl.textContent = n; labelText.textContent = n===1?"person detected":"people detected"; }
+
+  /* ========= Start camera ========= */
+  let stream = null;
+  startBtn.addEventListener("click", async () => {
+    try{
+      startBtn.disabled = true;
+      setStatus("Requesting camera…");
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      video.srcObject = stream;
+      await video.play();
+      setStatus("Camera ready. Click “Snapshot (3s)”.");
+      snapBtn.disabled = false;
+      showNotice("");
+    }catch(e){
+      console.error(e);
+      setStatus("Camera failed.");
+      showNotice("Allow camera access. Some browsers require HTTPS or localhost.", "error");
+      startBtn.disabled = false;
+    }
+  });
+
+  /* ========= Countdown + capture ========= */
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+  async function countdownAndSnap(seconds=3){
+    cd.classList.remove("hidden");
+    for(let t=seconds; t>0; t--){ cd.textContent = t; await wait(1000); }
+    cd.textContent = "📸"; await wait(200); cd.classList.add("hidden");
+    return captureFrameAsBase64();
+  }
+
+  function captureFrameAsBase64(){
+    const w = video.videoWidth || 640, h = video.videoHeight || 480;
+    const c = document.createElement("canvas"); c.width = w; c.height = h;
+    c.getContext("2d").drawImage(video, 0, 0, w, h);
+    return c.toDataURL("image/jpeg", 0.92).split(",")[1];
+  }
+
+  /* ========= Snapshot → inference ========= */
+  snapBtn.addEventListener("click", async () => {
+    snapBtn.disabled = true;
+    setStatus("Countdown… stand back to get in frame.");
+    showNotice("");
+
+    try{
+      const base64 = await countdownAndSnap(3);
+      setStatus("Running detection…");
+
+      const res = await fetch(ENDPOINT, { method:"POST", body: base64 });
+      if(!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+
+      const preds = Array.isArray(data.predictions) ? data.predictions : [];
+      const personLike = preds.filter(p => (p.class || p.class_name || "").toLowerCase() === "person");
+      const n = personLike.length || preds.length;
+      const avgConf = preds.length ? preds.reduce((s,p)=>s+(p.confidence||0),0)/preds.length : 0;
+
+      setCount(n);
+      setStatus("Done.");
+      extraEl.textContent = preds.length
+        ? `Detections: ${preds.length} • Avg. confidence: ${(avgConf*100).toFixed(0)}%`
+        : "No detections above threshold.";
+    }catch(err){
+      console.error(err);
+      setStatus("Detection failed.");
+      showNotice("Check dataset/version/API key or use the proxy to avoid CORS.", "error");
+    }finally{
+      snapBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>
